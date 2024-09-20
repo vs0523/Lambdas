@@ -27,33 +27,21 @@ def lambda_handler(event, context):
     
     old_snapshots = []
 
-    # Function to check if a snapshot is locked
-    def is_snapshot_locked(snapshot_id):
-        try:
-            attributes = ec2_client.describe_snapshot_attribute(
-                SnapshotId=snapshot_id,
-                Attribute='createVolumePermission'
-            )
-            # Check if the snapshot has any specific permissions (locked)
-            if attributes.get('CreateVolumePermissions', []):
-                return True
-        except Exception as e:
-            print(f"Error checking snapshot {snapshot_id}: {e}")
-        return False
-
     # Loop through snapshots and find those older than one year, excluding those in use and locked
     for snapshot in snapshots:
         # Get the snapshot's creation date
         creation_date = snapshot['StartTime']
-
+        
+        # Check for the 'lock-state' tag
+        lock_state_tag = next((tag['Value'] for tag in snapshot.get('Tags', []) if tag['Key'] == 'lock-state'), 'false')
+        
         # Check if the snapshot is older than one year, not in use, and not locked
-        if creation_date < one_year_ago and snapshot['SnapshotId'] not in snapshots_in_use:
-            if not is_snapshot_locked(snapshot['SnapshotId']):
-                old_snapshots.append({
-                    'SnapshotId': snapshot['SnapshotId'],
-                    'Name': 'Unnamed',  # Name is not available, so default to 'Unnamed'
-                    'Size': snapshot['VolumeSize']
-                })
+        if creation_date < one_year_ago and snapshot['SnapshotId'] not in snapshots_in_use and lock_state_tag != 'true':
+            old_snapshots.append({
+                'SnapshotId': snapshot['SnapshotId'],
+                'Name': 'Unnamed',  # Name is not available, so default to 'Unnamed'
+                'Size': snapshot['VolumeSize']
+            })
 
     count_of_old_snapshots = len(old_snapshots)
     
